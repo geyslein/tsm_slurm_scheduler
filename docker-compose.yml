@@ -1,11 +1,22 @@
 version: '3'
 
 services:
-  slurm:
-    build: .
+  slurm-scheduler:
+    build:
+      context: .
+      args:
+        # currently the latest version on EVE
+        PYTHON_VERSIONS: "3.8.6 3.9"
     hostname: slurmctl
     stdin_open: true
     tty: true
+#    healthcheck:
+#      test: ["CMD-SHELL", "curl --fail http://localhost:5000/health || exit 1"]
+#      interval: 10s
+#      timeout: 2s
+#      retries: 5
+    ports:
+      - 127.0.0.1:6820:6820
     volumes:
       - ./volumes/lib:/var/lib/slurmd
       - ./volumes/spool:/var/spool/slurm

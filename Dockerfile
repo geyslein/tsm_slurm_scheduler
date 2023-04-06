@@ -1,10 +1,4 @@
-FROM centos:7.9.2009
-
-LABEL org.opencontainers.image.source="https://github.com/giovtorres/docker-centos7-slurm" \
-      org.opencontainers.image.title="docker-centos7-slurm" \
-      org.opencontainers.image.description="Slurm All-in-one Docker container on CentOS 7" \
-      org.label-schema.docker.cmd="docker run -it -h slurmctl giovtorres/docker-centos7-slurm:latest" \
-      maintainer="Giovanni Torres"
+FROM centos:7.9.2009 as base
 
 ENV PATH "/root/.pyenv/shims:/root/.pyenv/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bin"
 
@@ -21,6 +15,8 @@ RUN set -ex \
         bash-completion \
         bzip2 \
         bzip2-devel \
+        curl \
+        unzip \
         file \
         iproute \
         gcc \
@@ -53,22 +49,13 @@ RUN set -ex \
         which \
         vim-enhanced \
         xz-devel \
-        zlib-devel http-parser-devel json-c-devel libjwt-devel libyaml-devel \
+        zlib-devel \
+        http-parser-devel \
+        json-c-devel \
+        libjwt-devel \
+        libyaml-devel \
     && yum clean all \
     && rm -rf /var/cache/yum
-
-# Set Vim and Git defaults
-RUN set -ex \
-    && echo "syntax on"           >> "$HOME/.vimrc" \
-    && echo "set tabstop=4"       >> "$HOME/.vimrc" \
-    && echo "set softtabstop=4"   >> "$HOME/.vimrc" \
-    && echo "set shiftwidth=4"    >> "$HOME/.vimrc" \
-    && echo "set expandtab"       >> "$HOME/.vimrc" \
-    && echo "set autoindent"      >> "$HOME/.vimrc" \
-    && echo "set fileformat=unix" >> "$HOME/.vimrc" \
-    && echo "set encoding=utf-8"  >> "$HOME/.vimrc" \
-    && git config --global color.ui auto \
-    && git config --global push.default simple
 
 # Add Tini
 ENV TINI_VERSION v0.18.0
@@ -77,7 +64,7 @@ RUN chmod +x /tini
 
 # Install OpenSSL1.1.1
 # See PEP 644: https://www.python.org/dev/peps/pep-0644/
-ARG OPENSSL_VERSION="1.1.1l"
+ARG OPENSSL_VERSION="1.1.1t"
 RUN set -ex \
     && wget --quiet https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz \
     && tar xzf openssl-${OPENSSL_VERSION}.tar.gz \
@@ -91,23 +78,40 @@ RUN set -ex \
     && popd \
     && rm -rf openssl-${OPENSSL_VERSION}.tar.gz
 
-# Install supported Python versions and install dependencies.
-# Set the default global to the latest supported version.
-# Use pyenv inside the container to switch between Python versions.
-ARG PYTHON_VERSIONS="3.6.15 3.7.12 3.8.12 3.9.9 3.10.0"
-ARG CONFIGURE_OPTS="--with-openssl=/opt/openssl"
+
+FROM base as build
+
+# currently the latest version on EVE
+ARG PYTHON_VERSION="3.8.6"
+
 RUN set -ex \
-    && curl https://pyenv.run | bash \
-    && echo "eval \"\$(pyenv init --path)\"" >> "${HOME}/.bashrc" \
-    && echo "eval \"\$(pyenv init -)\"" >> "${HOME}/.bashrc" \
-    && source "${HOME}/.bashrc" \
-    && pyenv update \
-    && for python_version in ${PYTHON_VERSIONS}; \
-        do \
-            pyenv install $python_version; \
-            pyenv global $python_version; \
-            pip install Cython pytest; \
-        done
+    && wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz \
+    && tar xvf Python-${PYTHON_VERSION}.tgz \
+    && pushd Python-${PYTHON_VERSION} \
+    && ./configure --enable-optimizations --with-ensurepip=install \
+    && make altinstall \
+    && popd \
+    && rm -rf Python-${PYTHON_VERSION}
+
+## Install supported Python versions and install dependencies.
+## Set the default global to the latest supported version.
+## Use pyenv inside the container to switch between Python versions.
+#ARG PYTHON_VERSIONS="3.9 3.10"
+#RUN set -ex \
+#    && curl https://pyenv.run | bash \
+#    && echo "eval \"\$(pyenv init --path)\"" >> "${HOME}/.bashrc" \
+#    && echo "eval \"\$(pyenv init -)\"" >> "${HOME}/.bashrc" \
+#    && source "${HOME}/.bashrc" \
+#    && pyenv update \
+#
+#FROM build as foo
+#RUN set -ex \
+#    && for python_version in ${PYTHON_VERSIONS}; \
+#        do \
+#            pyenv install $python_version; \
+#            pyenv global $python_version; \
+#            pip install Cython pytest; \
+#        done
 
 # Compile, build and install Slurm from Git source
 ARG SLURM_TAG=slurm-21-08-8-2
@@ -145,6 +149,8 @@ COPY --chown=slurm files/slurm/slurm.conf files/slurm/gres.conf files/slurm/slur
 COPY files/supervisord.conf /etc/
 
 RUN chmod 0600 /etc/slurm/slurmdbd.conf
+
+FROM build as dist
 
 # Mark externally mounted volumes
 VOLUME ["/var/lib/mysql", "/var/lib/slurmd", "/var/spool/slurm", "/var/log/slurm"]
