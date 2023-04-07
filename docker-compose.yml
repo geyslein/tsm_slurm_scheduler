@@ -15,8 +15,7 @@ services:
 #      interval: 10s
 #      timeout: 2s
 #      retries: 5
-    ports:
-      - 127.0.0.1:6820:6820
+#    entrypoint: /bin/bash
     volumes:
       - ./volumes/lib:/var/lib/slurmd
       - ./volumes/spool:/var/spool/slurm
