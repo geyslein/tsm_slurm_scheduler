@@ -93,26 +93,6 @@ RUN set -ex \
     && popd \
     && rm -rf Python-${PYTHON_VERSION}
 
-## Install supported Python versions and install dependencies.
-## Set the default global to the latest supported version.
-## Use pyenv inside the container to switch between Python versions.
-#ARG PYTHON_VERSIONS="3.9 3.10"
-#RUN set -ex \
-#    && curl https://pyenv.run | bash \
-#    && echo "eval \"\$(pyenv init --path)\"" >> "${HOME}/.bashrc" \
-#    && echo "eval \"\$(pyenv init -)\"" >> "${HOME}/.bashrc" \
-#    && source "${HOME}/.bashrc" \
-#    && pyenv update \
-#
-#FROM build as foo
-#RUN set -ex \
-#    && for python_version in ${PYTHON_VERSIONS}; \
-#        do \
-#            pyenv install $python_version; \
-#            pyenv global $python_version; \
-#            pip install Cython pytest; \
-#        done
-
 # Compile, build and install Slurm from Git source
 ARG SLURM_TAG=slurm-22-05-8-1
 ARG JOBS=4
@@ -142,12 +122,17 @@ RUN set -ex \
         /var/run/slurm \
     && /sbin/create-munge-key
 
-RUN dd if=/dev/random of=/etc/slurm/jwt_hs256.key bs=32 count=1 \
+# TODO mount this as credentials
+# the key is used to authenificate as user 'sontsm'
+# SLURM_JWT=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE5MzM2ODI5NDIsImlhdCI6MTY4MTIyMjE0Miwic3VuIjoic29udHNtIn0.7Zza2f0x309WyXn9FPXAp2XKncCmdOTBuz1O83XK4Jk
+ARG SLURM_JWT_KEY=f36efd822de475748c14abe669403368cc295381b4ecfc2fd04de186aa1c3c314163c25445405d74c0e39bfd65afb5bb366a6a88009bb0c5be6f797d4d3f5741
+RUN echo $SLURM_JWT_KEY > /etc/slurm/jwt_hs256.key \
     && chmod 600 /etc/slurm/jwt_hs256.key && chown slurm.slurm /etc/slurm/jwt_hs256.key
+#RUN dd if=/dev/random of=/etc/slurm/jwt_hs256.key bs=32 count=1 \
+#    && chmod 600 /etc/slurm/jwt_hs256.key && chown slurm.slurm /etc/slurm/jwt_hs256.key
 
 COPY --chown=slurm \
     files/slurm/slurm.conf \
-    files/slurm/gres.conf \
     files/slurm/slurmdbd.conf \
     files/slurm/cgroup.conf \
     /etc/slurm/
@@ -165,3 +150,11 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 ENTRYPOINT ["/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["/bin/bash"]
+
+FROM dist as devel
+
+RUN set -ex \
+    && echo "alias ls='ls --color=auto'"         >> "/root/.bashrc" \
+    && echo "alias ll='ls --color=auto -lAhF'"   >> "/root/.bashrc" \
+    && echo "alias ..='cd ..'"                  >> "/root/.bashrc" \
+    && echo "set -o vi"                         >> "/root/.bashrc"
