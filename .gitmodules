@@ -1,0 +1,3 @@
+[submodule "src/tsm-extractor"]
+	path = src/tsm-extractor
+	url = ../tsm-extractor.git
